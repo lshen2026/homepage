@@ -1,45 +1,55 @@
-const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const scholar = 'https://scholar.google.com/citations?hl=en&user=SXSO620AAAAJ';
-let data;
+// Each navigation item loads its own editable HTML file.
+const routes = {
+  home: { file: 'home', title: 'Lu Shen' },
+  research: { file: 'research', title: 'Research' },
+  publications: { file: 'publication', title: 'Publications' },
+  people: { file: 'people', title: 'People' },
+  teaching: { file: 'teaching', title: 'Teaching' },
+  about: { file: 'about', title: 'About' },
+  contact: { file: 'contact', title: 'Contact' }
+};
 const view = document.querySelector('#view');
-const heading = (label, title, description = '') => `<p class="eyebrow">${label}</p><h1>${title}</h1>${description ? `<p class="lede">${description}</p>` : ''}`;
-const section = (title, content) => `<section class="section"><h2>${title}</h2>${content}</section>`;
-const clean = text => text.replace(/\s*\([^)]*citations[^)]*\)\.?/gi, '').trim();
-const paperLinks = {
-  'NOx emission rise': 'https://www.nature.com/articles/s41586-026-10983-w',
-  'The added value': 'https://amt.copernicus.org/articles/19/4759/2026/',
-  'Prolonged wind droughts': 'https://www.nature.com/articles/s41558-025-02387-x',
-  'National quantifications': 'https://www.nature.com/articles/s41467-023-40671-6',
-  'Three-phase transition': 'https://doi.org/10.1021/acs.est.6c04494'
-};
-function publication(row, featured = false) {
-  const [year, raw] = row;
-  const text = clean(raw);
-  const markers = ['NOx emission rise', 'Impacts of power plant', 'Intensification of compound', 'Three-phase transition', 'First satellite-based', 'The added value', 'Coupling Agricultural', 'Prolonged wind droughts', 'Projecting future ozone', 'The large role', 'Quantifying methane emission baselines', 'Marine aquaculture', 'National quantifications', 'Satellite quantification', 'A machine-learning-guided'];
-  const marker = markers.find(m => text.includes(m));
-  const pos = marker ? text.indexOf(marker) : -1;
-  const authors = pos >= 0 ? text.slice(0, pos).trim() : '';
-  const body = pos >= 0 ? text.slice(pos) : text;
-  const journalMatch = body.match(/\.\s+(Nature(?:\s+(?:Geosciences?|Climate Change|Food|Communications))?|PNAS|Science Advances|Science Bulletin|Environ\. Sci\. Technol\.|Atmos\. Meas\. Tech\.|Geophysical Research Letters|Atmos\. Chem\. Phys\.|Geosci\. Model Dev\.)/);
-  const title = journalMatch ? body.slice(0, journalMatch.index) : body;
-  const journal = journalMatch ? body.slice(journalMatch.index + 2) : '';
-  const linkKey = Object.keys(paperLinks).find(k => title.startsWith(k));
-  const linkedTitle = linkKey ? `<a href="${paperLinks[linkKey]}" target="_blank" rel="noopener">${escapeHTML(title)}</a>` : escapeHTML(title);
-  return `<article class="publication"><div class="year">${escapeHTML(year)}</div><div><h3>${linkedTitle}</h3>${authors ? `<p>${escapeHTML(authors)}</p>` : ''}${journal ? `<p class="journal">${escapeHTML(journal)}</p>` : ''}</div></article>`;
+const navigation = document.querySelector('nav');
+const menu = document.querySelector('#menu');
+const cache = new Map();
+let requestNumber = 0;
+
+async function render(focusContent = false) {
+  const requested = location.hash.slice(1) || 'home';
+  const selected = Object.hasOwn(routes, requested) ? requested : 'home';
+  const route = routes[selected];
+  const currentRequest = ++requestNumber;
+  view.setAttribute('aria-busy', 'true');
+  navigation.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  try {
+    if (!cache.has(route.file)) {
+      const response = await fetch(`pages/${route.file}.html`);
+      if (!response.ok) throw new Error(`Page request failed: ${response.status}`);
+      cache.set(route.file, await response.text());
+    }
+    // Ignore responses for pages the visitor has already left.
+    if (currentRequest !== requestNumber) return;
+    view.innerHTML = cache.get(route.file);
+    view.className = `page-${selected}`;
+    document.title = `${route.title}${selected === 'home' ? '' : ' | Lu Shen'} | Peking University`;
+    navigation.querySelectorAll('a').forEach(link => {
+      if (link.hash === `#${selected}`) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+    window.scrollTo(0, 0);
+    if (focusContent) document.querySelector('#content').focus({preventScroll: true});
+  } catch (error) {
+    if (currentRequest !== requestNumber) return;
+    view.innerHTML = '<p>This page could not be loaded. Please refresh and try again.</p>';
+    console.error(error);
+  } finally {
+    if (currentRequest === requestNumber) view.setAttribute('aria-busy', 'false');
+  }
 }
-function timeline(rows) { return `<div class="timeline">${rows.map(([date, text]) => `<div class="date">${escapeHTML(date)}</div><p>${escapeHTML(text)}</p>`).join('')}</div>`; }
-function people(names) { return `<div class="people-grid">${names.map(text => { const i = text.indexOf(' ('); return `<article class="person"><h3>${escapeHTML(i >= 0 ? text.slice(0, i) : text)}</h3><p>${escapeHTML(i >= 0 ? text.slice(i + 2, -1) : '')}</p></article>`; }).join('')}</div>`; }
-function paragraphsBetween(start, end) { const a = data.paragraphs.indexOf(start), b = data.paragraphs.indexOf(end); return data.paragraphs.slice(a + 1, b >= 0 ? b : undefined); }
-const pages = {
-home: () => `${heading('Peking University · Atmospheric & Oceanic Sciences', 'Lu Shen')}<p class="intro">I study atmospheric chemistry and its connections to the climate system.</p><p>I am an Assistant Professor in the Department of Atmospheric and Oceanic Sciences, School of Physics, at Peking University. My research focuses on methane, hydroxyl radicals, and air pollutants, and the mechanistic links among these species and their feedback on climate.</p><p>I combine atmospheric chemistry modeling and satellite remote sensing, with an emphasis on advancing both methodologies.</p><div class="topic-line"><span>Atmospheric chemistry</span><span>Satellite remote sensing</span><span>Methane & climate</span></div><div class="actions"><a href="#research">Research interests</a><a href="#publications">Publications</a><a href="${scholar}" target="_blank" rel="noopener">Google Scholar</a></div>${section('Recent Research', `<article class="news"><time>2026</time><p>Our work in <em>Nature</em> examines how rising NOx emissions and their southward shift sustained the early-2000s methane plateau.</p></article><article class="news"><time>2026</time><p>Our <em>Nature Geoscience</em> study investigates how renewable energy droughts amplify the impacts of power plant emissions on air quality.</p></article><article class="news"><time>2025</time><p>Our study of prolonged wind droughts and global wind power security appeared as a cover paper in <em>Nature Climate Change</em>.</p></article>`)}<section class="section"><div class="section-head"><h2>Selected Publications</h2><a href="#publications">Full publication list</a></div>${[data.publications[0],data.publications[1],data.publications[7]].map(r => publication(r, true)).join('')}</section>`,
-research: () => `${heading('Research', 'Research Interests', 'Understanding atmospheric composition through satellite observations, chemical modeling, and statistical methods.')}<article class="research-block"><div class="number">01</div><h2>Methane emissions and atmospheric chemistry</h2><p>I investigate the sources, sinks, and evolution of atmospheric methane, including fossil fuel emissions, wetland emissions, and the role of hydroxyl radicals. This work connects emission changes to atmospheric chemistry and climate feedbacks.</p><p><a href="#publications">Related publications in Nature, Science Advances, and Nature Communications</a></p></article><article class="research-block"><div class="number">02</div><h2>Satellite remote sensing and emission quantification</h2><p>I combine satellite observations, ground-based measurements, and atmospheric inverse modeling to quantify greenhouse gas emissions. Research includes methane emissions from fuel exploitation and agriculture, and satellite-based quantification of cropland nitrous oxide emissions.</p></article><article class="research-block"><div class="number">03</div><h2>Climate, air quality, and renewable energy</h2><p>I study how climate variability and climate change shape extreme air pollution. Recent work addresses wind droughts, compound wind drought and heatwave events, and the effects of renewable energy shortages on power plant emissions and air quality.</p></article><article class="research-block"><div class="number">04</div><h2>Efficient atmospheric models and AI</h2><p>I develop numerical and statistical methods for atmospheric chemistry, including adaptive algorithms that reduce the computational cost of chemical kinetics and AI-based projections of future air quality.</p></article>${section('Research Funding', `<p class="note">Project dates and funding are from the October 2026 CV. Projects beginning in 2027 are forthcoming.</p><ul class="plain-list">${paragraphsBetween('Research Funding', 'Publications as First or Corresponding Author (*denotes corresponding author)').filter(x => !x.startsWith('Summary:')).map(x => `<li>${escapeHTML(x)}</li>`).join('')}</ul>`)}`,
-publications: () => `${heading('Publications', 'Publications', 'First and corresponding author publications, with coauthored work listed below.')}<p><a href="${scholar}" target="_blank" rel="noopener">Google Scholar profile</a> · * denotes corresponding author; # denotes shared authorship as marked in the CV.</p><div class="stats"><div class="stat"><strong>73</strong><span>Peer-reviewed publications</span></div><div class="stat"><strong>9,369</strong><span>Total citations</span></div><div class="stat"><strong>43</strong><span>h-index</span></div></div><p class="note">Citation metrics reported in the CV dated 5 October 2026.</p>${section('First & Corresponding Author · 2022–2026', data.publications.slice(0,15).map(r => publication(r)).join(''))}${section('Earlier First & Corresponding Author Publications', data.publications.slice(15).map(r => publication(r)).join(''))}${section('Submitted & Under Review', `<p class="note">These manuscripts are listed separately from published work.</p>${data.submitted.map(r => publication(r)).join('')}`)}${section('Coauthored Publications', data.coauthored.map(r => publication(r)).join(''))}`,
-people: () => {const names = paragraphsBetween('Students Supervised', 'Academic Service').filter(x => !x.startsWith('I have advised'));return `${heading('People', 'Students & Mentoring', 'Research training in atmospheric chemistry, remote sensing, and climate–air quality interactions.')}<p>I have advised six PhD students and eight undergraduate students, and co-advised three PhD students. Students under my guidance have published in Nature, Nature Climate Change, PNAS, Science Bulletin, GRL, ES&T, and AMT.</p>${section('PhD Students',people(names.filter(x => x.includes('PhD') && !x.includes('co-advised') && (!x.includes('undergraduate') || x.startsWith('Peixuan')))))}${section('Co-advised PhD Students',people(names.filter(x => x.includes('co-advised'))))}${section('Undergraduate Alumni',people(names.filter(x => x.includes('undergraduate') && !x.startsWith('Peixuan'))))}<p class="note section">Student affiliations and status are from the October 2026 CV.</p>`;},
-teaching: () => `${heading('Teaching', 'Teaching & Fieldwork', 'Connecting atmospheric science theory with coding, measurement, and field observation.')}<article class="course"><p class="course-meta">GRADUATE · ACTIVE · 68 HOURS PER SEMESTER</p><h2>Atmospheric Remote Sensing</h2><p>Atmospheric radiative transfer theory, remote sensing of meteorology and atmospheric composition, Bayesian methods, and five hands-on coding labs.</p></article><article class="course"><p class="course-meta">UNDERGRADUATE · ACTIVE · 51 HOURS PER SEMESTER</p><h2>Atmospheric Physics Lab</h2><p>Twelve experiments on atmospheric measurement techniques, including five experiments that I designed.</p></article><article class="course"><p class="course-meta">UNDERGRADUATE · ACTIVE · SUMMER FIELD COURSE</p><h2>Extreme Environments of the Tibetan Plateau</h2><p>A ten-day interdisciplinary field course for 50–60 students, with twelve field experiments at altitudes of 3,000–4,000 meters. I designed and teach three of these experiments, working alongside faculty from different schools.</p></article>${section('Previous Courses', '<ul class="plain-list"><li>General Physics Lab · Undergraduate · Fall 2022, Spring 2023, Spring 2024</li><li>Frontiers in Atmospheric Sciences · Graduate · Fall 2023</li></ul>')}${section('Textbooks & Chapters', `<ul class="plain-list">${paragraphsBetween('Textbooks and Book Chapters','Selected Conference Presentation (since 2022)').filter(x=>!['Textbooks','Reports and Book Chapters'].includes(x)).map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`)}${section('Teaching Awards', '<ul class="plain-list"><li>Second Prize, Peking University Young Faculty Teaching Competition (2025)</li><li>Best Teaching Plan Award, Peking University Young Faculty Teaching Competition (2025)</li><li>Peking University Emerging Scholar Teaching Award (2025)</li></ul>')}`,
-about: () => `${heading('About', 'Academic Background')}<p>My research integrates atmospheric chemistry modeling and remote sensing to understand greenhouse gases, air pollutants, and their interactions with climate.</p>${section('Professional Appointments', timeline(data.appointments))}${section('Education', timeline(data.education))}${section('Awards', `<ul class="plain-list">${paragraphsBetween('Awards', 'Media').map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`)}${section('Academic Service', `<ul class="plain-list">${paragraphsBetween('Academic Service','School and Department Service').filter(x=>x!=='Conference Convening and Session Leadership (since 2022) ').filter(x=>!x.trim().startsWith('Conference Convening')).map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`)}${section('Selected Media Coverage', '<article class="media-item"><a href="https://www.nature.com/articles/d41586-025-02330-2" target="_blank" rel="noopener">Wind droughts driven by climate change put green power at risk</a><p>Nature · Research Highlight</p></article><article class="media-item"><a href="https://www.nature.com/articles/s41558-025-02383-1" target="_blank" rel="noopener">Wind droughts threaten energy reliability</a><p>Nature Climate Change · News & Views</p></article><article class="media-item"><a href="https://www.nature.com/articles/s41561-026-02038-6" target="_blank" rel="noopener">Renewable energy droughts amplify the risk of extreme air pollution in China</a><p>Nature Geoscience · Research Briefing</p></article><article class="media-item"><a href="https://theconversation.com/reducing-air-pollution-could-increase-methane-emissions-from-wetlands-heres-what-needs-to-be-done-246723" target="_blank" rel="noopener">Reducing air pollution could increase methane emissions from wetlands</a><p>The Conversation · Vincent Gauci and Lu Shen</p></article>')}`,
-contact: () => `${heading('Contact', 'Get in Touch')}<p>For research and academic correspondence:</p><p class="contact-email"><a href="mailto:lshen@pku.edu.cn">lshen@pku.edu.cn</a></p><div class="contact-address"><p>Department of Atmospheric and Oceanic Sciences<br>School of Physics, Peking University</p><p>Room 505, 209 Chengfu Road<br>Beijing 100871, China</p></div>${section('Academic Profile',`<a href="${scholar}" target="_blank" rel="noopener">Google Scholar</a>`)}`
-};
-function render(){const route=location.hash.slice(1)||'home';const selected=pages[route]?route:'home';view.innerHTML=pages[selected]();document.title=`${selected==='home'?'Lu Shen':selected[0].toUpperCase()+selected.slice(1)+' | Lu Shen'} | Peking University`;document.querySelectorAll('nav a').forEach(a=>{if(a.hash==='#'+selected)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});document.querySelector('nav').classList.remove('open');document.querySelector('#menu').setAttribute('aria-expanded','false');window.scrollTo(0,0);}
-document.querySelector('#menu').addEventListener('click',()=>{const open=document.querySelector('nav').classList.toggle('open');document.querySelector('#menu').setAttribute('aria-expanded',String(open));});
-window.addEventListener('hashchange',()=>{render();document.querySelector('#content').focus({preventScroll:true});});
-fetch('assets/cv-data.json').then(r=>{if(!r.ok)throw new Error('Profile unavailable');return r.json();}).then(d=>{data=d;render();}).catch(()=>{view.innerHTML='<h1>Lu Shen</h1><p>Assistant Professor, Peking University</p><p>Please contact <a href="mailto:lshen@pku.edu.cn">lshen@pku.edu.cn</a>.</p>';});
+menu.addEventListener('click', () => {
+  const open = navigation.classList.toggle('open');
+  menu.setAttribute('aria-expanded', String(open));
+});
+window.addEventListener('hashchange', () => render(true));
+render();

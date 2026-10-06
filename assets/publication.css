@@ -1,0 +1,16 @@
+/* Consistent typography and compact spacing for every publication entry. */
+.page-publications .publication { padding: 12px 0; gap: 16px; }
+.page-publications .publication h3,
+.page-publications .publication p,
+.page-publications .publication .year {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.page-publications .publication h3 { margin: 0; }
+.page-publications .publication p { margin: 3px 0 0; }
+.page-publications .publication .year { margin-top: 0; }
+@media (max-width: 760px) {
+  .page-publications .publication { gap: 12px; }
+}
